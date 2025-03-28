@@ -1,17 +1,28 @@
 local mod_id = "balatrobot"
 
--- Get Libraries
-local socket = require("mods.balatrobot.libs.luasocket.src.socket")
-local http = require("mods.balatrobot.libs.luasocket.src.http")
-local json = require("mods.balatrobot.libs.dkjson")
-local ltn12 = require("mods.balatrobot.libs.luasocket.src.ltn12")
-
--- Logger
+-- Initialize logger first
 local logging = require("logging")
 local logger = logging.getLogger(mod_id)
 
+-- Function to safely require libraries
+local function safe_require(path)
+    local success, result = pcall(require, path)
+    if not success then
+        logger:error("Failed to load library: " .. path .. " - " .. tostring(result))
+        return nil
+    end
+    return result
+end
+
+-- Get Libraries
+local socket = safe_require("mods.balatrobot.libs.luasocket.src.socket")
+local ltn12 = safe_require("mods.balatrobot.libs.luasocket.src.ltn12")
+local mime = safe_require("mods.balatrobot.libs.luasocket.src.mime")
+local http = safe_require("mods.balatrobot.libs.luasocket.src.http")
+local json = safe_require("mods.balatrobot.libs.dkjson")
+
 -- Console
-local console = require("console")
+local console = safe_require("console")
 
 -- Function to extract game state
 local function getGameState()
@@ -83,9 +94,24 @@ end
 
 -- Function to send game state to server
 local function sendGameStateToServer()
+    if not json then
+        logger:error("JSON library not loaded!")
+        return false
+    end
+
     local gameState = getGameState()
 
     -- Encode game state as JSON
+    logger:info("Attempting to encode game state...")
+    logger:info("Json library status: " .. tostring(json ~= nil))
+    logger:info("Json library type: " .. type(json))
+    logger:info("Json library methods: " .. tostring(json and json.encode ~= nil))
+    
+    if not json.encode then
+        logger:error("JSON library encode method is nil!")
+        return false
+    end
+
     local jsonData, err = json.encode(gameState or {}, { exception = function() return "<cycle>" end })
 
     if not jsonData then
@@ -96,35 +122,72 @@ local function sendGameStateToServer()
     -- Log formatted JSON data before sending
     logger:info("Formatted JSON Data:\n" .. jsonData)
 
-    local url = "http://localhost:3000/game-state"
+    local url = "http://localhost:3000/api/chat"
     local headers = {
         ["Content-Type"] = "application/json",
-        ["Accept"] = "application/json",
-        ["Content-Length"] = tostring(#jsonData)
+        ["Accept"] = "application/json"
     }
 
     -- HTTP Response Storage
     local response_body = {}
 
-    -- Send HTTP Request
-    local response, status, response_headers = http.request {
-        url = url,
-        method = "POST",
-        headers = headers,
-        source = ltn12.source.string(jsonData),
-        sink = ltn12.sink.table(response_body)
+    -- Prepare message for GPT
+    local requestBody = {
+        message = "Hello! I am making you play balatro now. Here is my game state in raw JSON, please change this JSON and tell me how you would make the next move. Your response must be ENTIRELY IN JSON, AND MUST USE THIS FORMAT. Do not include any extra commentary, just edited JSON.\n" .. jsonData
     }
+
+    -- Send HTTP Request
+    logger:info("Attempting to send HTTP request to: " .. url)
+    logger:info("Request headers: " .. json.encode(headers))
+    logger:info("Request body: " .. json.encode(requestBody))
+    
+    local success, response, status, response_headers = pcall(function()
+        return http.request {
+            url = url,
+            method = "POST",
+            headers = headers,
+            source = ltn12.source.string(json.encode(requestBody)),
+            sink = ltn12.sink.table(response_body)
+        }
+    end)
+
+    if not success then
+        logger:error("HTTP request failed: " .. tostring(response))
+        return false
+    end
 
     -- Log HTTP Response
     local responseText = table.concat(response_body)
     logger:info("HTTP Status: " .. tostring(status))
+    logger:info("HTTP Response Headers: " .. tostring(response_headers))
     logger:info("Server Response: " .. responseText)
+
+    if status ~= 200 then
+        logger:error("HTTP request failed with status: " .. tostring(status))
+        logger:error("Full response: " .. responseText)
+        return false
+    end
+
+    -- Try to parse the response
+    if responseText and responseText ~= "" then
+        local success, responseData = pcall(json.decode, responseText)
+        if success and responseData and responseData.response then
+            logger:info("GPT Response: " .. responseData.response)
+            -- Here you can add logic to handle the GPT's suggested moves
+            -- For example, you could parse the response and apply the suggested changes
+        end
+    end
 
     return true
 end
 
 -- Register command for logging game state
 local function on_enable()
+    if not console then
+        logger:error("Console library not loaded!")
+        return
+    end
+
     console:registerCommand(
         "sendGameState",
         sendGameStateToServer,
@@ -137,8 +200,10 @@ end
 
 -- Remove command on disable
 local function on_disable()
-    console:removeCommand("sendGameState")
-    logger:info("BalatroBot disabled")
+    if console then
+        console:removeCommand("sendGameState")
+        logger:info("BalatroBot disabled")
+    end
 end
 
 return {
