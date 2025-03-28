@@ -1,0 +1,9 @@
+{
+  "id": "balatrobot",
+  "name": "BalatroBot",
+  "version": "1.0.0",
+  "description": ["function for logging game state"],
+  "author": "BuffoonBuilder",
+  "load_before": [],
+  "load_after": []
+}
