@@ -7,7 +7,7 @@ const port = 3000;
 
 // Initialize OpenAI client
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.API_TOKEN
 });
 
 // Middleware for parsing JSON bodies
