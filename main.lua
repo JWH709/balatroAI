@@ -92,6 +92,100 @@ local function getGameState()
     return gameState
 end
 
+-- Function to execute bot decisions
+local function executeBotDecision(decision)
+    if not decision or not decision.action then
+        logger:error("Invalid decision format")
+        return false
+    end
+
+    logger:info("Executing bot decision: " .. json.encode(decision))
+
+    -- Handle different types of actions
+    if decision.action == "discard" then
+        -- Only allow discarding if we're in the right state and have discards left
+        if G.GAME.current_round and G.GAME.current_round.discards_left > 0 then
+            -- Handle discarding cards
+            if decision.cards and #decision.cards > 0 then
+                -- First highlight the cards we want to discard
+                for _, cardId in ipairs(decision.cards) do
+                    -- Find the card in the hand
+                    for _, card in ipairs(G.hand.cards) do
+                        if card.base and card.base.id == cardId then
+                            -- Highlight the card
+                            G.hand:add_to_highlighted(card)
+                            logger:info("Highlighting card: " .. card.base.value .. " of " .. card.base.suit)
+                        end
+                    end
+                end
+
+                -- Then trigger the discard action
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after',
+                    delay = 0.1,
+                    blocking = true,
+                    blockable = false,
+                    func = function()
+                        if G.FUNCS.discard_cards_from_highlighted then
+                            G.FUNCS.discard_cards_from_highlighted()
+                        end
+                        return true
+                    end
+                }))
+                return true
+            end
+        else
+            logger:error("Cannot discard - no discards left or wrong game state")
+        end
+    elseif decision.action == "reroll" then
+        -- Only allow rerolling if we're in the shop phase
+        if G.STATE == G.STATES.SHOP then
+            -- Handle rerolling the shop
+            if G.GAME.current_round and G.GAME.current_round.reroll_cost then
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after',
+                    delay = 0.1,
+                    blocking = true,
+                    blockable = false,
+                    func = function()
+                        if G.GAME.current_round then
+                            G.GAME.current_round:reroll_shop()
+                        end
+                        return true
+                    end
+                }))
+                return true
+            end
+        else
+            logger:error("Cannot reroll - not in shop phase")
+        end
+    elseif decision.action == "buy_joker" then
+        -- Only allow buying jokers if we're in the shop phase
+        if G.STATE == G.STATES.SHOP then
+            -- Handle buying a joker
+            if decision.joker_index then
+                G.E_MANAGER:add_event(Event({
+                    trigger = 'after',
+                    delay = 0.1,
+                    blocking = true,
+                    blockable = false,
+                    func = function()
+                        if G.GAME.current_round then
+                            G.GAME.current_round:buy_joker(decision.joker_index)
+                        end
+                        return true
+                    end
+                }))
+                return true
+            end
+        else
+            logger:error("Cannot buy joker - not in shop phase")
+        end
+    end
+
+    return false
+end
+
 -- Function to send game state to server
 local function sendGameStateToServer()
     if not json then
@@ -131,9 +225,35 @@ local function sendGameStateToServer()
     -- HTTP Response Storage
     local response_body = {}
 
-    -- Prepare message for GPT
+    -- Prepare message for GPT with more structured instructions
     local requestBody = {
-        message = "Hello! I am making you play balatro now. Here is my game state in raw JSON, please change this JSON and tell me how you would make the next move. Your response must be ENTIRELY IN JSON, AND MUST USE THIS FORMAT. Do not include any extra commentary, just edited JSON.\n" .. jsonData
+        message = [[You are a Balatro bot that needs to make decisions about the game. Analyze the current game state and respond with a JSON object that includes:
+1. action: The type of action to take ("discard", "reroll", "buy_joker")
+2. cards: Array of card IDs to discard (if action is "discard")
+3. joker_index: Index of joker to buy (if action is "buy_joker")
+4. reasoning: Brief explanation of why this decision was made
+
+IMPORTANT GAME RULES:
+GAME PHASES:
+- During the hand phase (when you have cards in hand):
+  * CRITICAL: If discards_left = 0, you MUST play the hand - you cannot discard or reroll
+  * Only if discards_left > 0 can you consider discarding cards
+  * Only discard if you can significantly improve the hand (e.g., from high card to two pair or better)
+  * If you have a good hand (two pair or better), play it instead of discarding
+- During the shop phase (when you can buy jokers):
+  * You can reroll the shop to get new jokers
+  * You can buy jokers from the shop
+  * You CANNOT discard or play cards in the shop phase
+
+CURRENT DISCARDS STATUS:
+]] .. (G.GAME.current_round and G.GAME.current_round.discards_left == 0 and [[
+WARNING: You have NO discards left! You MUST play the current hand - discarding is not an option.
+]] or [[
+You have ]] .. (G.GAME.current_round and G.GAME.current_round.discards_left or 0) .. [[ discards remaining.
+]]) .. [[
+
+Current game state:
+]] .. jsonData
     }
 
     -- Send HTTP Request
@@ -173,8 +293,16 @@ local function sendGameStateToServer()
         local success, responseData = pcall(json.decode, responseText)
         if success and responseData and responseData.response then
             logger:info("GPT Response: " .. responseData.response)
-            -- Here you can add logic to handle the GPT's suggested moves
-            -- For example, you could parse the response and apply the suggested changes
+            
+            -- Try to parse the decision from the response
+            local decisionSuccess, decision = pcall(json.decode, responseData.response)
+            if decisionSuccess and decision then
+                logger:info("Parsed decision: " .. json.encode(decision))
+                -- Execute the bot's decision
+                executeBotDecision(decision)
+            else
+                logger:error("Failed to parse decision from response")
+            end
         end
     end
 
