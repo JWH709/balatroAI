@@ -4,6 +4,7 @@
 .cursor.json
 .cursor-settings.json
 for cursor/
+libs/
 
 # IDE and editor files
 .vscode/
