@@ -1,6 +1,6 @@
 {
-  "id": "balatrobot",
-  "name": "BalatroBot",
+  "id": "balatroai",
+  "name": "BalatroAI",
   "version": "1.0.0",
   "description": ["function for logging game state"],
   "author": "BuffoonBuilder",

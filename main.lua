@@ -1,4 +1,4 @@
-local mod_id = "balatrobot"
+local mod_id = "balatroai"
 
 -- Initialize logger first
 local logging = require("logging")
@@ -15,11 +15,11 @@ local function safe_require(path)
 end
 
 -- Get Libraries
-local socket = safe_require("mods.balatrobot.libs.luasocket.src.socket")
-local ltn12 = safe_require("mods.balatrobot.libs.luasocket.src.ltn12")
-local mime = safe_require("mods.balatrobot.libs.luasocket.src.mime")
-local http = safe_require("mods.balatrobot.libs.luasocket.src.http")
-local json = safe_require("mods.balatrobot.libs.dkjson")
+local socket = safe_require("mods.balatroai.libs.luasocket.src.socket")
+local ltn12 = safe_require("mods.balatroai.libs.luasocket.src.ltn12")
+local mime = safe_require("mods.balatroai.libs.luasocket.src.mime")
+local http = safe_require("mods.balatroai.libs.luasocket.src.http")
+local json = safe_require("mods.balatroai.libs.dkjson")
 
 -- Console
 local console = safe_require("console")
@@ -323,14 +323,14 @@ local function on_enable()
         function() return {} end,
         "sendGameState"
     )
-    logger:info("BalatroBot enabled - sendGameState command registered")
+    logger:info("BalatroAI enabled - sendGameState command registered")
 end
 
 -- Remove command on disable
 local function on_disable()
     if console then
         console:removeCommand("sendGameState")
-        logger:info("BalatroBot disabled")
+        logger:info("BalatroAI disabled")
     end
 end
 
