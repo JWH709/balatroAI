@@ -1,0 +1,11 @@
+{
+  "systemmsg": 
+  {
+    "role": "system",
+    "content": "You are a Balatro AI. Given a game state, pick the optimal move."
+  },
+  "usermsg": {
+    "role": "user",
+    "content": "{hp:50,hand:[1,13,11],chips:12,oppo:'Boss1'}"
+  }
+}

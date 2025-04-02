@@ -34,9 +34,14 @@ app.post('/api/chat', async (req, res) => {
       ],
     });
 
+    const response = completion.choices[0].message.content;
+
     res.json({
-      response: completion.choices[0].message.content
+      response: response
     });
+
+    console.log(response);
+
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Failed to process request' });
