@@ -119,6 +119,8 @@ local function executeBotDecision(decision)
         return false
     end
 
+    -- -- debug
+    -- actionObj = "play_hand";
     -- Handle different types of actions
     if actionObj == "discard" then
         logger:info("Attempting to discard...")
@@ -130,6 +132,7 @@ local function executeBotDecision(decision)
                     -- Extract card ID for card we want to discard
                     local cardId = cardData.id
                     for _, card in ipairs(G.hand.cards) do
+                        -- Highlight cards
                         if card.base and card.base.id == cardId then
                             G.hand:add_to_highlighted(card)
                             logger:info("Highlighting card for discard: " .. card.base.value .. " of " .. card.base.suit)
@@ -155,10 +158,10 @@ local function executeBotDecision(decision)
         else
             logger:error("Cannot discard - no discards left or wrong game state")
         end
-    elseif actionObj.action == "play_hand" then
+    elseif actionObj == "play_hand" then
         logger:info("Attempting to play a hand...");
         -- Validate we have cards to play
-        if cardsObj and #cardsObj > 0 then
+        if actionObj and #cardsObj > 0 and #cardsObj <= 5 then
             -- Highlight the cards we want to play
             for _, cardData in ipairs(cardsObj) do
                 -- Extract card ID for card we want to play
