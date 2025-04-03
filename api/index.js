@@ -48,7 +48,7 @@ app.post("/api/chat", async (req, res) => {
       response: response,
     });
 
-    console.log('Current action being taken: ' + response);
+    console.log('Response: ' + response);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ error: "Failed to process request" });

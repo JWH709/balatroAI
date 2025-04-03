@@ -103,18 +103,32 @@ local function executeBotDecision(decision)
 
     -- Get the action object
     local actionObj = decision.action
-    if not actionObj or not actionObj.action then
-        logger:error("Invalid action object format")
+
+    -- Build a table for cards
+    local cardsObj = {}
+    for _, card in ipairs(decision.cards) do
+        table.insert(cardsObj, card)
+    end
+
+    -- Log action & current cards associated with action
+    logger:info("Action: "  .. actionObj);
+    logger:info("Cards: " .. json.encode(cardsObj));
+
+    if not actionObj or not cardsObj then
+        logger:error("Invalid action or cards object!")
         return false
     end
 
     -- Handle different types of actions
-    if actionObj.action == "discard" then
+    if actionObj == "discard" then
+        logger:info("Attempting to discard...")
         -- Only allow discarding if we're in the right state and have discards left
         if G.GAME.current_round and G.GAME.current_round.discards_left > 0 then
-            if actionObj.cards and #actionObj.cards > 0 then
+            if actionObj and #cardsObj > 0 then
                 -- Highlight the cards we want to discard
-                for _, cardId in ipairs(actionObj.cards) do
+                for _, cardData in ipairs(cardsObj) do
+                    -- Extract card ID for card we want to discard
+                    local cardId = cardData.id
                     for _, card in ipairs(G.hand.cards) do
                         if card.base and card.base.id == cardId then
                             G.hand:add_to_highlighted(card)
@@ -142,10 +156,13 @@ local function executeBotDecision(decision)
             logger:error("Cannot discard - no discards left or wrong game state")
         end
     elseif actionObj.action == "play_hand" then
+        logger:info("Attempting to play a hand...");
         -- Validate we have cards to play
-        if actionObj.cards and #actionObj.cards > 0 then
+        if cardsObj and #cardsObj > 0 then
             -- Highlight the cards we want to play
-            for _, cardId in ipairs(actionObj.cards) do
+            for _, cardData in ipairs(cardsObj) do
+                -- Extract card ID for card we want to play
+                local cardId = cardData.id
                 for _, card in ipairs(G.hand.cards) do
                     if card.base and card.base.id == cardId then
                         G.hand:add_to_highlighted(card)
@@ -171,8 +188,10 @@ local function executeBotDecision(decision)
         else
             logger:error("Cannot play hand - no cards specified")
         end
+    else
+        logger:error("Valid action not found!")
     end
-
+    
     return false
 end
 
