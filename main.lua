@@ -212,9 +212,9 @@ local function sendGameStateToServer()
     -- HTTP Response Storage
     local response_body = {}
 
-    -- Send just the game state
+    -- Send just the game state but within a message field
     local requestBody = {
-        gameState = gameState
+        message = gameState  -- Keep gameState as the message content
     }
 
     -- Send HTTP Request
