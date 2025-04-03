@@ -5,6 +5,8 @@ require('dotenv').config();
 const app = express();
 const port = 3000;
 
+const messagesData = require('./obj/messages.json');
+
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.API_TOKEN
@@ -30,7 +32,8 @@ app.post('/api/chat', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "user", content: message }
+        messagesData.systemmsg,
+        messagesData.usermsg
       ],
     });
 

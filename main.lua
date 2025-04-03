@@ -206,7 +206,7 @@ local function sendGameStateToServer()
     local url = "http://localhost:3000/api/chat"
     local headers = {
         ["Content-Type"] = "application/json",
-        ["Accept"] = "application/json"
+        ["Accept"] = "application/json",
     }
 
     -- HTTP Response Storage
