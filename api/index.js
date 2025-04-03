@@ -5,7 +5,7 @@ require("dotenv").config();
 const app = express();
 const port = 3000;
 
-const messagesData = require("./obj/messages.json");
+const messageTemplates = require("./obj/messagetemplates.json");
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -17,27 +17,27 @@ app.use(express.json());
 
 // Test route
 app.get("/", (req, res) => {
-  res.json({ message: "Welcome to the API!" });
+  res.json({ message: "API is up and running!" });
 });
 
 // Chat endpoint
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message: gameState } = req.body;
 
-    if (!message) {
-      return res.status(400).json({ error: "Message is required" });
+    if (!gameState) {
+      return res.status(400).json({ error: "Gamestate not found!" });
     }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        messagesData.systemmsg,
+        messageTemplates.systemmsg,
         {
           role: "user",
           content:
             "Here is the current game state:\n\n" +
-            JSON.stringify(message, null, 2), //this fix is pretty ass, but works for now
+            JSON.stringify(gameState, null, 2), //this fix is pretty ass, but works for now
         },
       ],
     });
@@ -48,7 +48,7 @@ app.post("/api/chat", async (req, res) => {
       response: response,
     });
 
-    console.log(response);
+    console.log('Current action being taken: ' + response);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ error: "Failed to process request" });
