@@ -101,25 +101,29 @@ local function executeBotDecision(decision)
 
     logger:info("Executing bot decision: " .. json.encode(decision))
 
+    -- Get the action object
+    local actionObj = decision.action
+    if not actionObj or not actionObj.action then
+        logger:error("Invalid action object format")
+        return false
+    end
+
     -- Handle different types of actions
-    if decision.action == "discard" then
+    if actionObj.action == "discard" then
         -- Only allow discarding if we're in the right state and have discards left
         if G.GAME.current_round and G.GAME.current_round.discards_left > 0 then
-            -- Handle discarding cards
-            if decision.cards and #decision.cards > 0 then
-                -- First highlight the cards we want to discard
-                for _, cardId in ipairs(decision.cards) do
-                    -- Find the card in the hand
+            if actionObj.cards and #actionObj.cards > 0 then
+                -- Highlight the cards we want to discard
+                for _, cardId in ipairs(actionObj.cards) do
                     for _, card in ipairs(G.hand.cards) do
                         if card.base and card.base.id == cardId then
-                            -- Highlight the card
                             G.hand:add_to_highlighted(card)
-                            logger:info("Highlighting card: " .. card.base.value .. " of " .. card.base.suit)
+                            logger:info("Highlighting card for discard: " .. card.base.value .. " of " .. card.base.suit)
                         end
                     end
                 end
 
-                -- Then trigger the discard action
+                -- Trigger the discard action
                 G.E_MANAGER:add_event(Event({
                     trigger = 'after',
                     delay = 0.1,
@@ -137,49 +141,35 @@ local function executeBotDecision(decision)
         else
             logger:error("Cannot discard - no discards left or wrong game state")
         end
-    elseif decision.action == "reroll" then
-        -- Only allow rerolling if we're in the shop phase
-        if G.STATE == G.STATES.SHOP then
-            -- Handle rerolling the shop
-            if G.GAME.current_round and G.GAME.current_round.reroll_cost then
-                G.E_MANAGER:add_event(Event({
-                    trigger = 'after',
-                    delay = 0.1,
-                    blocking = true,
-                    blockable = false,
-                    func = function()
-                        if G.GAME.current_round then
-                            G.GAME.current_round:reroll_shop()
-                        end
-                        return true
+    elseif actionObj.action == "play_hand" then
+        -- Validate we have cards to play
+        if actionObj.cards and #actionObj.cards > 0 then
+            -- Highlight the cards we want to play
+            for _, cardId in ipairs(actionObj.cards) do
+                for _, card in ipairs(G.hand.cards) do
+                    if card.base and card.base.id == cardId then
+                        G.hand:add_to_highlighted(card)
+                        logger:info("Highlighting card for play: " .. card.base.value .. " of " .. card.base.suit)
                     end
-                }))
-                return true
+                end
             end
-        else
-            logger:error("Cannot reroll - not in shop phase")
-        end
-    elseif decision.action == "buy_joker" then
-        -- Only allow buying jokers if we're in the shop phase
-        if G.STATE == G.STATES.SHOP then
-            -- Handle buying a joker
-            if decision.joker_index then
-                G.E_MANAGER:add_event(Event({
-                    trigger = 'after',
-                    delay = 0.1,
-                    blocking = true,
-                    blockable = false,
-                    func = function()
-                        if G.GAME.current_round then
-                            G.GAME.current_round:buy_joker(decision.joker_index)
-                        end
-                        return true
+
+            -- Trigger the play action
+            G.E_MANAGER:add_event(Event({
+                trigger = 'after',
+                delay = 0.1,
+                blocking = true,
+                blockable = false,
+                func = function()
+                    if G.FUNCS.play_cards_from_highlighted then
+                        G.FUNCS.play_cards_from_highlighted()
                     end
-                }))
-                return true
-            end
+                    return true
+                end
+            }))
+            return true
         else
-            logger:error("Cannot buy joker - not in shop phase")
+            logger:error("Cannot play hand - no cards specified")
         end
     end
 
@@ -197,9 +187,6 @@ local function sendGameStateToServer()
 
     -- Encode game state as JSON
     logger:info("Attempting to encode game state...")
-    logger:info("Json library status: " .. tostring(json ~= nil))
-    logger:info("Json library type: " .. type(json))
-    logger:info("Json library methods: " .. tostring(json and json.encode ~= nil))
     
     if not json.encode then
         logger:error("JSON library encode method is nil!")
@@ -225,35 +212,9 @@ local function sendGameStateToServer()
     -- HTTP Response Storage
     local response_body = {}
 
-    -- Prepare message for GPT with more structured instructions
+    -- Send just the game state
     local requestBody = {
-        message = [[You are a Balatro bot that needs to make decisions about the game. Analyze the current game state and respond with a JSON object that includes:
-1. action: The type of action to take ("discard", "reroll", "buy_joker")
-2. cards: Array of card IDs to discard (if action is "discard")
-3. joker_index: Index of joker to buy (if action is "buy_joker")
-4. reasoning: Brief explanation of why this decision was made
-
-IMPORTANT GAME RULES:
-GAME PHASES:
-- During the hand phase (when you have cards in hand):
-  * CRITICAL: If discards_left = 0, you MUST play the hand - you cannot discard or reroll
-  * Only if discards_left > 0 can you consider discarding cards
-  * Only discard if you can significantly improve the hand (e.g., from high card to two pair or better)
-  * If you have a good hand (two pair or better), play it instead of discarding
-- During the shop phase (when you can buy jokers):
-  * You can reroll the shop to get new jokers
-  * You can buy jokers from the shop
-  * You CANNOT discard or play cards in the shop phase
-
-CURRENT DISCARDS STATUS:
-]] .. (G.GAME.current_round and G.GAME.current_round.discards_left == 0 and [[
-WARNING: You have NO discards left! You MUST play the current hand - discarding is not an option.
-]] or [[
-You have ]] .. (G.GAME.current_round and G.GAME.current_round.discards_left or 0) .. [[ discards remaining.
-]]) .. [[
-
-Current game state:
-]] .. jsonData
+        gameState = gameState
     }
 
     -- Send HTTP Request
@@ -288,11 +249,11 @@ Current game state:
         return false
     end
 
-    -- Try to parse the response
+    -- Try to parse and execute the response
     if responseText and responseText ~= "" then
         local success, responseData = pcall(json.decode, responseText)
         if success and responseData and responseData.response then
-            logger:info("GPT Response: " .. responseData.response)
+            logger:info("Server Response: " .. responseData.response)
             
             -- Try to parse the decision from the response
             local decisionSuccess, decision = pcall(json.decode, responseData.response)
