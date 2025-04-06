@@ -103,98 +103,102 @@ local function executeBotDecision(decision)
 
     -- Get the action object
     local actionObj = decision.action
-
-    -- Build a table for cards
-    local cardsObj = {}
-    for _, card in ipairs(decision.cards) do
-        table.insert(cardsObj, card)
-    end
-
-    -- Log action & current cards associated with action
-    logger:info("Action: "  .. actionObj);
-    logger:info("Cards: " .. json.encode(cardsObj));
-
-    if not actionObj or not cardsObj then
-        logger:error("Invalid action or cards object!")
+    if not actionObj or not actionObj.action then
+        logger:error("Invalid action object format")
         return false
     end
 
-    -- -- debug
-    -- actionObj = "play_hand";
     -- Handle different types of actions
-    if actionObj == "discard" then
-        logger:info("Attempting to discard...")
+    if actionObj.action == "discard" then
         -- Only allow discarding if we're in the right state and have discards left
         if G.GAME.current_round and G.GAME.current_round.discards_left > 0 then
-            if actionObj and #cardsObj > 0 then
-                -- Highlight the cards we want to discard
-                for _, cardData in ipairs(cardsObj) do
-                    -- Extract card ID for card we want to discard
-                    local cardId = cardData.id
-                    for _, card in ipairs(G.hand.cards) do
-                        -- Highlight cards
-                        if card.base and card.base.id == cardId then
-                            G.hand:add_to_highlighted(card)
-                            logger:info("Highlighting card for discard: " .. card.base.value .. " of " .. card.base.suit)
-                        end
+            if actionObj.cards and #actionObj.cards > 0 then
+                -- Create a lookup table for cards we want to discard
+                local cardsToDiscard = {}
+                for _, cardObj in ipairs(actionObj.cards) do
+                    -- Create a key using both rank and suit to uniquely identify cards
+                    local cardKey = cardObj.rank .. "_" .. cardObj.suit
+                    cardsToDiscard[cardKey] = true
+                end
+
+                -- Find matching cards in hand and highlight them
+                local cardsFound = 0
+                for _, card in ipairs(G.hand.cards) do
+                    -- Create the same key format for comparison
+                    local cardKey = card.base.value .. "_" .. card.base.suit
+                    if cardsToDiscard[cardKey] then
+                        G.hand:add_to_highlighted(card)
+                        logger:info("Highlighting card for discard: " .. card.base.value .. " of " .. card.base.suit)
+                        cardsFound = cardsFound + 1
                     end
                 end
 
-                -- Trigger the discard action
+                if cardsFound > 0 then
+                    -- Trigger the discard action
+                    G.E_MANAGER:add_event(Event({
+                        trigger = 'after',
+                        delay = 0.1,
+                        blocking = true,
+                        blockable = false,
+                        func = function()
+                            if G.FUNCS.discard_cards_from_highlighted then
+                                G.FUNCS.discard_cards_from_highlighted()
+                            end
+                            return true
+                        end
+                    }))
+                    return true
+                else
+                    logger:error("No matching cards found in hand for specified cards")
+                end
+            end
+        else
+            logger:error("Cannot discard - no discards left or wrong game state")
+        end
+    elseif actionObj.action == "play_hand" then
+        -- Similar modification for play_hand action
+        if actionObj.cards and #actionObj.cards > 0 then
+            -- Create a lookup table for cards we want to play
+            local cardsToPlay = {}
+            for _, cardObj in ipairs(actionObj.cards) do
+                local cardKey = cardObj.rank .. "_" .. cardObj.suit
+                cardsToPlay[cardKey] = true
+            end
+
+            -- Find matching cards in hand and highlight them
+            local cardsFound = 0
+            for _, card in ipairs(G.hand.cards) do
+                local cardKey = card.base.value .. "_" .. card.base.suit
+                if cardsToPlay[cardKey] then
+                    G.hand:add_to_highlighted(card)
+                    logger:info("Highlighting card for play: " .. card.base.value .. " of " .. card.base.suit)
+                    cardsFound = cardsFound + 1
+                end
+            end
+
+            if cardsFound > 0 then
+                -- Trigger the play action
                 G.E_MANAGER:add_event(Event({
                     trigger = 'after',
                     delay = 0.1,
                     blocking = true,
                     blockable = false,
                     func = function()
-                        if G.FUNCS.discard_cards_from_highlighted then
-                            G.FUNCS.discard_cards_from_highlighted()
+                        if G.FUNCS.play_cards_from_highlighted then
+                            G.FUNCS.play_cards_from_highlighted()
                         end
                         return true
                     end
                 }))
                 return true
+            else
+                logger:error("No matching cards found in hand for specified cards")
             end
-        else
-            logger:error("Cannot discard - no discards left or wrong game state")
-        end
-    elseif actionObj == "play_hand" then
-        logger:info("Attempting to play a hand...");
-        -- Validate we have cards to play
-        if actionObj and #cardsObj > 0 and #cardsObj <= 5 then
-            -- Highlight the cards we want to play
-            for _, cardData in ipairs(cardsObj) do
-                -- Extract card ID for card we want to play
-                local cardId = cardData.id
-                for _, card in ipairs(G.hand.cards) do
-                    if card.base and card.base.id == cardId then
-                        G.hand:add_to_highlighted(card)
-                        logger:info("Highlighting card for play: " .. card.base.value .. " of " .. card.base.suit)
-                    end
-                end
-            end
-
-            -- Trigger the play action
-            G.E_MANAGER:add_event(Event({
-                trigger = 'after',
-                delay = 0.1,
-                blocking = true,
-                blockable = false,
-                func = function()
-                    if G.FUNCS.play_cards_from_highlighted then
-                        G.FUNCS.play_cards_from_highlighted()
-                    end
-                    return true
-                end
-            }))
-            return true
         else
             logger:error("Cannot play hand - no cards specified")
         end
-    else
-        logger:error("Valid action not found!")
     end
-    
+
     return false
 end
 
@@ -277,15 +281,28 @@ local function sendGameStateToServer()
         if success and responseData and responseData.response then
             logger:info("Server Response: " .. responseData.response)
             
-            -- Try to parse the decision from the response
-            local decisionSuccess, decision = pcall(json.decode, responseData.response)
-            if decisionSuccess and decision then
-                logger:info("Parsed decision: " .. json.encode(decision))
-                -- Execute the bot's decision
-                executeBotDecision(decision)
+            -- Find the JSON object in the response
+            local jsonStart = responseData.response:find("{")
+            local jsonEnd = responseData.response:reverse():find("}")
+            if jsonStart and jsonEnd then
+                -- Extract just the JSON part from the response
+                local jsonString = responseData.response:sub(jsonStart, -jsonEnd)
+                logger:info("Extracted JSON: " .. jsonString)
+                
+                -- Try to parse the decision from the JSON
+                local decisionSuccess, decision = pcall(json.decode, jsonString)
+                if decisionSuccess and decision then
+                    logger:info("Parsed decision: " .. json.encode(decision))
+                    -- Execute the bot's decision
+                    executeBotDecision(decision)
+                else
+                    logger:error("Failed to parse decision from JSON: " .. tostring(decision))
+                end
             else
-                logger:error("Failed to parse decision from response")
+                logger:error("Could not find JSON object in response")
             end
+        else
+            logger:error("Failed to parse initial response")
         end
     end
 
