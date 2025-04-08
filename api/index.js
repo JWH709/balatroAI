@@ -29,6 +29,8 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "Gamestate not found!" });
     }
 
+    console.log("GameState:", JSON.stringify(gameState, null, 2));
+
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
@@ -48,7 +50,7 @@ app.post("/api/chat", async (req, res) => {
       response: response,
     });
 
-    console.log('Response: ' + response);
+    console.log("Response: " + response);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ error: "Failed to process request" });

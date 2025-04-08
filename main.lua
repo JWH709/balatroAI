@@ -32,49 +32,26 @@ local function getGameState()
     end
 
     local gameState = {
-        stake = G.GAME.stake or 0,
-        unused_discards = G.GAME.unused_discards or 0,
-        win_ante = G.GAME.win_ante or 0,
-        round = G.GAME.round or 0,
-        hands_played = G.GAME.hands_played or 0,
-
-        -- Current round state
-        current_round = G.GAME.current_round or {},
-
-        -- Active modifiers
-        modifiers = G.GAME.modifiers or {},
-
-        -- Jokers in play
-        jokers = {},
-
-        -- Blind (round effect)
-        blind = {
-            name = G.GAME.round_resets and G.GAME.round_resets.blind and G.GAME.round_resets.blind.name or "Unknown",
-            debuffs = G.GAME.round_resets and G.GAME.round_resets.blind and G.GAME.round_resets.blind.debuff or {},
-            chips_needed = (G.GAME.round_resets and G.GAME.round_resets.blind and G.GAME.round_resets.blind.mult or 1) * 300,
-        },
-
-        -- Deck info
-        deck_size = G.deck and #G.deck.cards or 0,
-
         -- Current hand details
         hand = {
-            cards = {},
-            count = 0
-        }
-    }
+            cards = {}
+        },
+        
+        -- Blind (round effect)
+        blind = {
+            chips_needed = (G.GAME.round_resets and G.GAME.round_resets.blind and G.GAME.round_resets.blind.mult or 1) * 300,
+            debuffs = G.GAME.round_resets and G.GAME.round_resets.blind and G.GAME.round_resets.blind.debuff or {}
+        },
 
-    -- Extract Joker Data
-    if G.jokers and G.jokers.cards then
-        for _, joker in ipairs(G.jokers.cards) do
-            table.insert(gameState.jokers, {
-                name = joker.label or "Unknown",
-                effect = joker.ability and joker.ability.effect or "None",
-                multiplier = joker.ability and joker.ability.mult or 1,
-                times_used = joker.base and joker.base.times_played or 0
-            })
-        end
-    end
+        -- Current round state
+        current_round = {
+            discards_left = G.GAME.current_round and G.GAME.current_round.discards_left or 0,
+            hands_left = G.GAME.current_round and G.GAME.current_round.hands_left or 0
+        },
+
+        -- Jokers in play
+        jokers = {}
+    }
 
     -- Extract Hand Data
     if G.hand and G.hand.cards then
@@ -86,7 +63,18 @@ local function getGameState()
                 times_played = card.base and card.base.times_played or 0
             })
         end
-        gameState.hand.count = #gameState.hand.cards
+    end
+
+    -- Extract Joker Data
+    if G.jokers and G.jokers.cards then
+        for _, joker in ipairs(G.jokers.cards) do
+            table.insert(gameState.jokers, {
+                name = joker.label or "Unknown",
+                effect = joker.ability and joker.ability.effect or "None",
+                multiplier = joker.ability and joker.ability.mult or 0,
+                times_used = joker.base and joker.base.times_played or 0
+            })
+        end
     end
 
     return gameState
